@@ -19,7 +19,7 @@ public class PlayerController : HealthComponent
     [SerializeField] private PlayerSO _playerSO;
     [SerializeField] private float _playerSpeed = 6.0f;
 
-    private Transform _actualPos => transform;
+    private Transform _actualPos => transform; // takie nazewnictwo raczej dodaje poziom zamieszania zamiast go zmniejszac, transform to transform, pozycja to tylko jedna ze zmiennych transforma
     private bool _isTeleporting = false;
     private Vector3 _aimPos;
     private Vector3 _move;
@@ -45,38 +45,41 @@ public class PlayerController : HealthComponent
     private void OnEnable()
     {
         _input.Enable();
-        _reloadAction.performed += ctx => Reload(ctx);
+        //nie ma potrzeby robic subskrybcji przez lambda expression, wystarczy:
+        _reloadAction.performed += Reload;
         _teleportAction.performed += ctx => Teleport(ctx);
     }
 
     private void OnDisable()
     {
         _input.Disable(); 
+        //odsubkrybowanie przez labda expresdion nie zadzaiała w ten sposób, ale jezeli przerobisz to tak jak wyzej zasugerowałem to bedzie git
         _reloadAction.canceled -= ctx => Reload(ctx);
-        _teleportAction.canceled += ctx => Teleport(ctx);
+        _teleportAction.canceled += ctx => Teleport(ctx); //masz plus zamiast minusa
     }
 
-    protected override void Start()
+    //do wywalenia
+    protected override void Start() 
     {
         base.Start();
     }
 
     void Update()
     {
-        CalcMovePlayer();
+        CalcMovePlayer(); //raczej nie powinno sie uzywac skrótów, chyba ze są całkowitym standardem
         CalcRotatePlayer(_weaponController._currentWeapon);
         UseWeapon(_weaponController._currentWeapon);
     }
 
     private void FixedUpdate()
     {
-        if(!_isTeleporting)
+        if(!_isTeleporting)//klamry
         ExecuteMovement();
     }
 
     private void ExecuteMovement()
     {
-        _controller.Move(_move * Time.deltaTime * _playerSpeed);
+        _controller.Move(_move * Time.deltaTime * _playerSpeed); //turbo pierdoła ale, najpier powinno sie mnozyc floaty i na koncu przez wektor ze wzgledu na wydajnosć, czyli np Time.delta time * _player speed wrzucic w nawias
 
         if (_direction != Vector3.zero)
         {
@@ -91,7 +94,7 @@ public class PlayerController : HealthComponent
         {
             _aimPos.y = 0;
         }
-        else
+        else //klamry
             _aimPos.y = (weapon is FireArms) ? ((FireArms)weapon)._shootPoint.position.y : ((MeleWeapon)weapon)._shootPoint.position.y;
 
         _direction = (_aimPos - _actualPos.position).normalized;
@@ -105,6 +108,7 @@ public class PlayerController : HealthComponent
 
     private void UseWeapon(WeaponBase weapon)
     {
+        //ta część metody to Aim() lub HandleAiming() i ono rzeczywiscie powinno się odbywac co klatkę
         if (weapon == null)
             return;
 
@@ -113,6 +117,10 @@ public class PlayerController : HealthComponent
             weapon.AimWeapon(_aimPos);
         }
 
+        // a ta konstrukcja nie wyglada fajnie, i:
+        //1) raczej nie ma potrzeby zeby to robic co klatka
+        //2) OnStopShoot bedzie zasadniczo wywolywane co klatke, a nazwa sugeruje ze stanie sie to jedynie kiedy strzelanie zostało zakończone
+        //3) mogbys sie zasubskrybować gdzies w inicjalizacji do _shotAction.performed oraz _shotAction.canceled i na podstawie tych eventów wysyłć OnStarShoot oraz OnStopShoot poprzez 2 nowe metody np. "NotifyStartShoot() i NotifyStopShot() ktore robią invoke na tyc heventach
         if (_shootAction.IsPressed())
         {
             OnStartShoot?.Invoke();
@@ -128,13 +136,15 @@ public class PlayerController : HealthComponent
         _input = new PlayerControls();
         _controller = GetComponent<CharacterController>();
         _weaponController = GetComponent<WeaponController>();
+        // raczej do serializownaych pol zamaist get componentami, ale jakbys sie trzymał tego w całym projekcie zawsze to ewentualnie moze zostac
 
         _moveAction = _input.Player.Move;
         _shootAction = _input.Player.Shoot;
         _reloadAction = _input.Player.Reload;
         _teleportAction = _input.Player.Teleport;
         
-        OnStartShoot += () => _weaponController.OnTriggerHold(_weaponController._currentWeapon);
+        //straszny burdel sie Ci tutaj zrobił, OnStartShoot i OnStopShoot to publiczne eventy i to do nich inne klasy powiinny sie subskrybowac z zewnątrz, bo jeżeli tak ma to wygldać to nie ma to żadnego sensu, ponieważ podobną logikę możesz zrobic bez nich, i po prostu od razu odpalić finalne  metdy bez tego 'posrednika' w postaci eventów
+        OnStartShoot += () => _weaponController.OnTriggerHold(_weaponController._currentWeapon); //skoro w parametrz jest przekazywane cos co juz jest w weaponControllerze t oczy w ogole jest sens zeby ten parametr isnitał? weapon contaroller sam sobie moze to wziac
         OnStopShoot += () => _weaponController.OnTriggerRelease(_weaponController._currentWeapon);
     }
 
@@ -173,6 +183,8 @@ public class PlayerController : HealthComponent
 
     private void OnDestroy()
     {
+        //nie zadziała poprawnie
+        //https://stackoverflow.com/questions/183367/unsubscribe-anonymous-method-in-c-sharp
         OnStartShoot -= () => _weaponController.OnTriggerHold(_weaponController._currentWeapon);
         OnStopShoot -= () => _weaponController.OnTriggerRelease(_weaponController._currentWeapon);
         //OnTeleport -= () => _spawner.ResetPlayerPosition();
